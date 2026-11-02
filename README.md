@@ -9,7 +9,7 @@
 
 > **Official Repository** for the research paper:  
 > *"PoultryHealth Intelligence: Hierarchical Deep Learning and Grounded Generative AI for Poultry Disease Diagnosis"*  
-> **Authors:** Ayush M Singh, Venkata Sriram Topalli, Dr. Dega Nagaraju  
+> **Authors:** Ayush M Singh, Venkata Sriram Topalli 
 > **Affiliation:** School of Computer Science and Engineering (SCOPE), Vellore Institute of Technology (VIT), Vellore, India  
 
 ---
