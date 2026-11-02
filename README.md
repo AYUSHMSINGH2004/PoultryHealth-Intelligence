@@ -226,3 +226,4 @@ If you use this codebase, models, or empirical findings in your research, please
 - **Source Code**: Released under the [MIT License](LICENSE).
 - **Roboflow Dataset**: Provided under the [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/) license.
 - **Clinical Protocols**: Grounded strictly in non-confidential disease guidelines published in the *MSD Veterinary Manual*.
+
