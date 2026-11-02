@@ -1,0 +1,155 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 264 67% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 264 67% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 264 67% 15%;
+    
+    /* Core Colors */
+    --primary: 262 83% 58%; /* #7C3AED */
+    --primary-foreground: 0 0% 100%;
+    --primary-dark: 264 67% 35%;
+    
+    --secondary: 244 76% 59%; /* #4F46E5 */
+    --secondary-foreground: 0 0% 100%;
+    
+    --accent: 330 81% 60%; /* #EC4899 */
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%; /* #EF4444 */
+    --destructive-foreground: 0 0% 100%;
+    
+    --muted: 268 30% 96%;
+    --muted-foreground: 264 20% 40%;
+    
+    --border: 268 30% 90%;
+    --input: 0 0% 100%;
+    --ring: 262 83% 58%;
+    --radius: 0.75rem;
+
+    /* Disease Specific Colors */
+    --disease-bumblefoot: 0 84% 60%; /* #EF4444 */
+    --disease-healthy: 160 84% 39%; /* #10B981 */
+    --disease-fowl-pox: 25 95% 53%; /* #F97316 */
+    --disease-coryza: 271 91% 65%; /* #A855F7 */
+    --disease-crd: 217 91% 60%; /* #3B82F6 */
+  }
+
+  .dark {
+    --background: 264 67% 10%;
+    --foreground: 0 0% 100%;
+    --card: 264 67% 15%;
+    --card-foreground: 0 0% 100%;
+    --popover: 264 67% 15%;
+    --popover-foreground: 0 0% 100%;
+    
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
+    --primary-dark: 264 67% 35%;
+    
+    --secondary: 244 76% 59%;
+    --secondary-foreground: 0 0% 100%;
+    
+    --accent: 330 81% 60%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --muted: 264 40% 20%;
+    --muted-foreground: 268 20% 70%;
+    
+    --border: 264 40% 25%;
+    --input: 264 40% 25%;
+    --ring: 262 83% 58%;
+
+    --disease-bumblefoot: 0 84% 60%;
+    --disease-healthy: 160 84% 39%;
+    --disease-fowl-pox: 25 95% 53%;
+    --disease-coryza: 271 91% 65%;
+    --disease-crd: 217 91% 60%;
+  }
+}
+
+@layer utilities {
+  .bg-size-200 {
+    background-size: 200% 200%;
+  }
+  
+  .animate-gradient-shift {
+    animation: gradientShift 8s ease-in-out infinite;
+  }
+  
+  .animate-gradient-flow {
+    animation: gradientFlow 10s ease-in-out infinite;
+  }
+  
+  .animate-gradient-pulse {
+    animation: gradientPulse 12s ease-in-out infinite;
+  }
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes gradientFlow {
+  0% { background-position: 0% 0%; }
+  50% { background-position: 100% 100%; }
+  100% { background-position: 0% 0%; }
+}
+
+@keyframes gradientPulse {
+  0% { background-position: 50% 0%; }
+  50% { background-position: 50% 100%; }
+  100% { background-position: 50% 0%; }
+}
+
+body {
+  @apply bg-background text-foreground;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  @apply border-border;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-muted;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-primary/50 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-primary/70;
+}
+
+/* Smooth transitions globally */
+.color-transition {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+
+* {
+  @apply color-transition;
+}

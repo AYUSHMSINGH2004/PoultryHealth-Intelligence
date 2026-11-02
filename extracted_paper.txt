@@ -1,0 +1,239 @@
+PARAGRAPHS (192):
+
+[000] [None] PoultryHealth Intelligence : Hierarchical Deep Learning and Grounded Generative AI for Poultry Disease Diagnosis
+[003] [None] Abstract—Poultry diseases spread quickly, yet a first diagnosis often depends on a veterinarian who is not on the farm. This paper presents PoultryHealth Intelligence, a web-based decision-support system that gives a first opinion from a single photograph of a bird, foot, comb or organ. A hierarchical pair of MobileNetV2 classifiers first screens each image as healthy or sick (the “Bouncer”) and then assigns sick birds to Bumblefoot, Chronic Respiratory Disease (CRD), Fowl Pox or Infectious Coryza (the “Doctor”). Their outputs are fused into one five-class probability distribution using a safety-first rule driven by the cumulative sickness probability, explained with Grad-CAM heatmaps, and passed to a generative language model (Gemini 2.5 Flash) that is restricted to a fixed table of approved guidelines when writing the care plan; the same model also rejects non-poultry images before any classifier runs. On the validation splits the Bouncer reaches 82.1% accuracy (90.2% precision and 81.6% recall for the sick class) and the Doctor reaches 71.7% accuracy with a macro F1-score of 0.65, performing strongly on CRD, with high recall on Fowl Pox, but poorly on Bumblefoot (34.8% recall). We report 95% confidence intervals, analyze the error patterns, discuss threats to validity, and describe the FastAPI and React implementation. The system is intended as decision support, not as a replacement for veterinary diagnosis.
+[004] [None] Index Terms—poultry disease detection, transfer learning, MobileNetV2, hierarchical classification, Grad-CAM, explainable AI, grounded generation, decision support
+[005] [Heading 1] I.  Introduction
+[006] [None] Poultry diseases spread quickly through a flock, and the first diagnosis often depends on a veterinarian or an experienced stockkeeper who may not be on the farm. Several important conditions leave visible signs that an ordinary phone camera can capture: chronic respiratory disease (CRD) and infectious coryza cause nasal discharge and facial swelling, fowl pox produces scabs on the comb and wattles, and staphylococcal infection of the footpad produces bumblefoot [1]–[4]. Image-based decision support is therefore an attractive way to give farmers a fast first opinion while professional advice is arranged.
+[007] [None] Deep learning has been applied to poultry disease detection, but most published work analyzes fecal images [5]–[7]. Transfer learning from ImageNet-pretrained backbones [8]–[10] is the standard remedy for the small datasets typical of this domain. A common design is a single “flat” multi-class network. Such a network turns ambiguous evidence into a competition between classes: a bird with unclear signs is still given whichever disease scores highest, and a sick bird can be missed when the Healthy class wins narrowly. Hierarchical and cascaded designs [11], [12] split a hard decision into simpler ones, which suits a problem whose first question (is this bird sick?) differs from its second (which disease is it?). A bare class label is also hard for a farmer to trust or act on [13], and free-form text from a large language model (LLM) can contain fabricated medical advice [14].
+[008] [None] This paper presents PoultryHealth Intelligence, a hierarchical, explainable and actionable decision-support system. Its contributions are:
+[009] [List Paragraph] Safety-first hierarchical fusion. A binary Bouncer CNN screens for sickness and a four-class Doctor CNN names the disease. Their outputs are fused into a single five-class distribution whose decision rule is driven by the cumulative sickness probability (Section III).
+[010] [List Paragraph] Explainable and grounded output. Every diagnosis comes with a Grad-CAM heatmap and the full probability distribution, an LLM input gate rejects non-poultry images, and the care plan is written from a fixed guideline table. The CNNs diagnose; the LLM only filters and phrases (Sections VI and VII).
+[011] [List Paragraph] Deployed end-to-end system. A single-endpoint FastAPI backend and a React web client with PDF export (Section VIII).
+[012] [List Paragraph] Component-level evaluation with uncertainty. Per-class results with 95% confidence intervals, confusion-matrix error analysis and an explicit discussion of validity threats on a merged two-source dataset (Sections IX and X).
+[013] [None] The remainder of the paper is organized as follows. Section II reviews related work and the research gap. Section III describes the system and decision logic, Sections IV–VII the data, models, explainability and report generation, and Section VIII the implementation. Section IX presents results, Section X discusses limitations and responsible use, and Section XI concludes.
+[014] [Heading 1] II.  Related Work
+[015] [Heading 2] A.  Image-Based Poultry Disease Detection
+[016] [None] Most published deep-learning work on poultry disease analyzes fecal images. Machuve et al. [5] collected more than 8,000 fecal images labelled for coccidiosis, salmonella and Newcastle disease, compared a baseline CNN with VGG16, InceptionV3, MobileNetV2 and Xception, and recommended the lightweight MobileNetV2 for farm-level deployment. Mbelwa [6] likewise trained a convolutional network on fecal images, and Dhungana et al. [7] proposed an integrated deep-learning approach for chicken manure images. A 2025 ACM study [15] compared CNN and transfer-learning backbones on fecal images, with guidance for small-data regimes, and Taşdelen and Arslan [16] applied transfer learning to high-risk diseases in poultry feces. Luo [17] built a feature-based transfer-learning pipeline in which a ResNet152 backbone feeds an SVM classifier, Sabbella [18] used a YOLOv8-based detector, and Zaman et al. [19] presented a data-efficient two-stage framework for real-time identification of avian pox in broilers. Shwetha et al. [20] review the wider use of machine and deep learning in poultry health management. Table I summarizes these works.
+[017] [None] TABLE I
+[018] [None] Summary of Related Poultry-Disease Studies
+[020] [None] These studies show that transfer learning works well when labelled data are limited. We follow that approach with a lightweight MobileNetV2 backbone [21], which suits a small, CPU-servable web API.
+[021] [Heading 2] B.  Hierarchical and Cascaded Classification
+[022] [None] Silla and Freitas [11] survey hierarchical classification across application domains, and HD-CNN [22] shows that coarse-to-fine CNNs can break a hard visual task into easier sub-tasks. In detection, attentional cascades [12] reject easy negatives early so that later stages concentrate on harder cases, and selective classification [23] lets a model abstain when it is uncertain. Our Bouncer–Doctor design applies the same screening principle to diagnosis: the first stage answers the safety-critical question (sick or not), and the second names the illness. Unlike a strict cascade, both models run on every image so that their probabilities can be fused (Section III-B).
+[023] [Heading 2] C.  Explainability and Grounded Generation
+[024] [None] Grad-CAM [24] highlights the image regions that drive a CNN decision, but saliency maps can be insensitive to model parameters [25], and CNNs can exploit dataset shortcuts such as background [26]. A heatmap is therefore a prompt for human review rather than proof of correctness. LLMs are fluent but can hallucinate [14], and retrieval-augmented generation [27] grounds generation in external knowledge. We use a simpler form of grounding: the LLM (Gemini 2.5 Flash [28], [29]) receives a short fixed guideline table in its prompt and is forbidden from adding advice.
+[025] [Heading 2] D.  Research Gap
+[026] [None] The literature leaves five gaps: (i) datasets are small and fragmented, often under one thousand images, with class imbalance [30] and little real-world variation; (ii) models trained on clean images generalize poorly to farm conditions such as uneven lighting, occlusion and camera angle, a form of dataset shift [31], [32]; (iii) lesion-level localization is rarely studied, which reduces trust in subtle cases; (iv) methods for few labelled samples are needed; and (v) cross-dataset evaluation is rare, so robustness is seldom measured. Among the works in Table I, none combines hierarchical screening, visual explanation and a guideline-constrained report in one deployed tool. This work responds to gap (i) by merging two datasets and to the trust gap by adding Grad-CAM explanations and a safety-first decision rule. It does not address lesion localization or cross-dataset evaluation, which remain future work (Section XI).
+[029] [None] Fig. 1. System architecture and request flow of PoultryHealth Intelligence.
+[031] [Heading 1] III.  System Overview and Decision Logic
+[032] [Heading 2] A.  Architecture
+[033] [None] Fig. 1 traces one request. The client posts an image and the user’s Gemini API key to the /analyze endpoint. Gemini first answers TRUE or FALSE to the question of whether the photo shows a bird, a bird body part or a poultry organ; on FALSE the request ends with an error message and no CNN or report step runs. Otherwise the image is resized to 224×224 pixels and passed to both CNNs. Their outputs are fused into five probabilities, a Grad-CAM heatmap is generated, and Gemini writes the care plan. Everything returns as one JSON response.
+[034] [Heading 2] B.  Hierarchical Decision Logic
+[035] [None] Let p be the Bouncer’s probability that the bird is sick, and let qk (k = 1…4) be the Doctor’s softmax scores for Bumblefoot, CRD, Fowl Pox and Infectious Coryza. The system reports one joint distribution over five classes:
+[036] [None] P(Healthy) = 1 − p	(1)
+[037] [None] P(dk) = p · qk	(2)
+[038] [None] Because the qk sum to one, the five values sum to 100%. The decision rule acts on p: if p < 0.5 the bird is reported as Healthy; otherwise the diagnosis is the disease with the largest qk. Any other disease whose joint probability is at least 5% is listed as a secondary risk. The confidence shown to the user is the joint probability of the reported class (Algorithm 1).
+[039] [None] Algorithm 1. Safety-first hierarchical diagnosis
+[040] [None] 1:	g ← GeminiGate(x); if g = FALSE return “Access Denied”
+[041] [None] 2:	p ← Bouncer(x); (q1,…,q4) ← Doctor(x)
+[042] [None] 3:	P(Healthy) ← 1 − p; P(dk) ← p·qk for k = 1…4
+[043] [None] 4:	if p < 0.5 then label ← Healthy else label ← dk*, k* = argmax qk
+[044] [None] 5:	S ← {dj ≠ label : P(dj) ≥ 0.05}  (secondary risks)
+[045] [None] 6:	heatmap ← Grad-CAM(Bouncer if Healthy else Doctor, x)
+[046] [None] 7:	report ← GeminiReport(P, S, guideline table)
+[047] [None] 8:	return label, P(label), S, heatmap, report
+[049] [None] Screening first and classifying second splits one difficult task into two simpler ones. It also has a deliberate side effect. When p is only slightly above 0.5, the top disease can show a lower percentage than Healthy. In the run shown in Fig. 3, Healthy is 45.8% and Fowl Pox 43.0%, yet Fowl Pox is reported because p = 0.542. The report prompt therefore adds an “AI Diagnostic Note” in such cases, explaining that the cumulative sickness indicators triggered the safety rule. The 0.5 threshold is a hand-set default; when a missed sick bird costs more than a false alarm, lowering it is the standard cost-sensitive remedy [33] (Section IX-B).
+[050] [Heading 1] IV.  Dataset and Preprocessing
+[051] [Heading 2] A.  Sources and Cleaning
+[052] [None] The training data merge an original poultry-disease image set ([DATASET 1: name, citation, licence]) with a Roboflow-hosted dataset ([DATASET 2: name, URL, licence]) whose labels were translated to the project’s class names. The classes are Healthy, Bumblefoot, CRD, Fowl Pox and Infectious Coryza. A custom TensorFlow cleaner scanned the merged data and removed 13 corrupt or invalid files before training, so that unreadable images could not disturb gradient descent. Cleaning removed corrupt files only: no near-duplicate check was run between the training and validation splits, so leakage between them cannot be excluded [34]. Data preparation and training ran in Google Colab.
+[053] [Heading 2] B.  Two Training Sets
+[054] [None] To support the hierarchy, the cleaned data were arranged into two folder structures: one binary (Healthy vs. Sick) for the Bouncer and one with the four disease classes for the Doctor. Table II gives the sizes. Each was split 80/20 into training and validation sets. The validation sets are imbalanced: 146 Healthy vs. 283 Sick images for the Bouncer, and 23 Bumblefoot, 137 CRD, 29 Fowl Pox and 90 Coryza images for the Doctor. Bumblefoot and Fowl Pox are therefore under-represented, which matters when reading the results.
+[055] [None] TABLE II
+[056] [None] Dataset Splits
+[058] [Heading 2] C.  Preprocessing and Augmentation
+[059] [None] All images are resized to 224×224 RGB. Augmentation layers [35], namely random horizontal and vertical flips, rotation of up to ±0.2 turns and zoom of up to 15%, are built into the models, so they are active only during training and are bypassed at inference.
+[060] [Heading 1] V.  Model Design and Training
+[061] [Heading 2] A.  Architecture
+[062] [None] Both classifiers are transfer-learning models [8] implemented in TensorFlow/Keras [36], [37] with the same structure (Table III): an augmentation block, a frozen ImageNet [10]-pretrained MobileNetV2 backbone [21], global average pooling, dropout of 0.2 [38] and one dense output layer. They differ only in the head and the loss: the Bouncer has one sigmoid unit giving p, and the Doctor has four softmax units giving the qk. Only the dense layer is trained, with Adam [39], which keeps training fast, suits the small dataset and reuses generic ImageNet features [9]. Freezing the backbone is a deliberate simplicity choice; fine-tuning may transfer better [40] and is listed as future work.
+[063] [None] TABLE III
+[064] [None] Model Configuration
+[066] [Heading 2] B.  Training Procedure
+[067] [None] Training used batches of 32 images (54 steps per epoch for the Bouncer and 35 for the Doctor). The Bouncer was allowed 25 epochs and stopped after 23; the Doctor was allowed 30 and stopped after 14. The logs are consistent with early stopping on validation loss with a patience of five epochs and restoration of the best weights: the lowest validation loss occurred at epoch 18 for the Bouncer and epoch 9 for the Doctor, and the validation accuracies at those epochs (82.05% and 71.68%) equal the accuracies obtained from the confusion matrices in Section IX. This is an inference from the logs, not a recorded setting.
+[068] [Heading 2] C.  Learning Behavior
+[069] [None] Fig. 2 shows accuracy per epoch. The Bouncer’s training and validation accuracy converge near 80%, and validation accuracy fluctuates by several points from epoch to epoch, a sign of the small validation set. The Doctor improves from 34% to about 67% training accuracy and 71–72% validation accuracy. The two curves stay close together, so there is no strong sign of overfitting; instead the frozen backbone and limited data cap the achievable accuracy.
+[071] [None] Fig. 2. Training and validation accuracy of (a) the Bouncer and (b) the Doctor. The Bouncer log does not include epoch 13.
+[072] [Heading 1] VI.  Explainable AI: Grad-CAM
+[073] [None] A bare label is hard to trust, so the backend returns a Grad-CAM [24] heatmap with every diagnosis. First, the active model is split at the last MobileNetV2 convolution layer, out_relu. Second, the score y of the winning class is back-propagated to that layer’s feature maps Ak. Third, the gradients are averaged per channel to give weights αk, and the weighted maps are summed, keeping only positive values:
+[074] [None] αk = (1/Z) Σi,j ∂y/∂Aijk	(3)
+[075] [None] L = ReLU( Σk αk Ak )	(4)
+[076] [None] Finally, the map is normalized, resized to 224×224 and overlaid on the photo as a color map at 40% strength. If the result is Healthy the Bouncer is explained; for a disease the Doctor is explained. The API returns the original and the overlay as Base64 JPEG images.
+[078] [None] Fig. 3. Input photo and Grad-CAM overlay from the development notebook. Diagnosis: Fowl Pox (43.0%).
+[079] [None] Grad-CAM shows where the model looked, which is not proof that it is medically correct [25]. A heatmap that highlights the background rather than the lesion, comb or foot would indicate a shortcut learned from the dataset [26], so heatmaps should be reviewed alongside the diagnosis. No quantitative localization metric was computed; the heatmaps in this paper are qualitative.
+[080] [Heading 1] VII.  Grounded Report Generation
+[081] [Heading 2] A.  Two Roles for Gemini
+[082] [None] Gemini 2.5 Flash [28], [29] is used for two language tasks, and never for the diagnosis. Before the CNNs, it acts as an input gate: it is shown the image and must answer with the single word TRUE or FALSE to whether the image shows a bird, a bird body part or a poultry organ. Humans, pets and objects are refused with an “Access Denied” message. Without this gate the CNNs would output a confident disease label for any image. After the CNNs, it acts as a report writer: it receives the fused probabilities and a fixed table of approved guidelines, and writes the care plan.
+[083] [Heading 2] B.  Approved Guideline Table
+[084] [None] The backend contains a hard-coded dictionary of guidelines for the five classes (Table IV). The prompt states that this is the only advice the model may use, forbids new medical advice, and fixes the output format as three sections: Diagnostic Breakdown, Immediate Action Plan, and Ongoing Treatment & Care. The agent and contagiousness entries in the Nature column are consistent with veterinary reference material [1]–[4]; the management advice itself has not been validated by a veterinarian (Section X).
+[085] [None] TABLE IV
+[086] [None] Approved Guideline Dictionary (Summary)
+[088] [None] The prompt also contains a transparency rule that produces the AI Diagnostic Note of Section III-B. This restriction limits hallucination [14], but it is a prompt-level control and not a guarantee. The CNNs decide; Gemini only filters the input and phrases the output.
+[089] [Heading 1] VIII.  Implementation and Deployment
+[090] [Heading 2] A.  Backend
+[091] [None] The backend is a Python 3.12 FastAPI [41] application running TensorFlow 2.19. Both Keras models are loaded once at startup. One endpoint does the whole job (Table V), which keeps any client simple, and FastAPI provides interactive API documentation at /docs. The Gemini key is supplied by the user with each request and is not stored by the backend. A rate-limit response from Gemini is mapped to a friendly 429 message asking the user to wait about a minute. The server uses permissive CORS so that the browser client can call it from another origin, a setting suitable for a demonstration only.
+[092] [None] TABLE V
+[093] [None] API Contract
+[095] [Heading 2] B.  Frontend and Deployment
+[096] [None] The web client is a React 18 single-page application built with Vite, Tailwind CSS and React Router, with Framer Motion animation. It has four pages: Home, Predict, About, and Poultry Info, a reference page listing symptoms, causes, treatment and prevention for each disease. The user stores a Gemini API key in a settings dialog, which keeps it in the browser’s local storage; analysis is disabled until a key is configured. After analysis, the Predict page shows a diagnosis card with the confidence score, the probability distribution as bars, the original photo beside its Grad-CAM heatmap, and the AI diagnostic report (Fig. 4). The result can be exported as a PDF generated in the browser with html2pdf.js. The front end is deployed on Netlify and the backend on Render, configured through the VITE_BACKEND_URL environment variable; during development both ran locally. Source code: [repository URL].
+[098] [None] Fig. 4. Web client: (a) home page, (b) Predict page with image upload, (c) result view for a foot photo (Bumblefoot, 77.4%).
+[099] [Heading 1] IX.  Results and Discussion
+[100] [Heading 2] A.  Evaluation Protocol
+[101] [None] All results are computed on the 20% validation split of each dataset (429 images for the Bouncer and 279 for the Doctor). The same split was used to monitor early stopping and no separate test set was held out, so the figures below are optimistic estimates of performance on unseen data (Section X). Precision, recall and F1-score are derived from the confusion matrices, and macro averages weight every class equally. Confidence intervals are 95% Wilson score intervals [42]. Because accuracy is sensitive to class imbalance, we also report balanced accuracy, Cohen’s κ [43] and the Matthews correlation coefficient (MCC) [44].
+[102] [Heading 2] B.  Bouncer: Healthy vs. Sick
+[103] [None] The Bouncer reaches 82.1% accuracy (352 of 429; 95% CI 78.1–85.4%), a macro F1-score of 0.81, a balanced accuracy of 82.3% and an MCC of 0.62 (Table VI, Fig. 5). Precision for the sick class is 90.2% (86.0–93.3%), so a bird flagged as sick is very likely to be sick. Recall for the sick class is 81.6% (76.7–85.7%): 52 of the 283 sick birds (18.4%) were passed as healthy, and 25 of the 146 healthy birds (17.1%) were flagged as sick. Precision for Healthy is only 69.9%, because 52 of the 173 birds the Bouncer calls healthy (30.1%) are in fact sick.
+[104] [None] TABLE VI
+[105] [None] Bouncer Per-Class Results (Validation, n = 429)
+[108] [None] Fig. 5. Bouncer confusion matrix (healthy vs. sick).
+[109] [None] These numbers show that the safety goal is only partly met. The design aims to avoid false negatives, but about one sick bird in five is still missed at the default 0.5 threshold. The threshold was set by hand and not tuned; lowering it would catch more sick birds at the cost of more false alarms. ROC and precision–recall analysis would be the natural way to choose the operating point, and precision–recall curves are especially informative here because Healthy makes up only 34% of the validation set [45]; neither curve was produced in this study.
+[110] [Heading 2] C.  Doctor: Four-Disease Classification
+[111] [None] The Doctor reaches 71.7% accuracy (200 of 279; 95% CI 66.1–76.6%), a macro F1-score of 0.65, a balanced accuracy of 66.5% and a Cohen’s κ of 0.56 (Table VII, Fig. 6). Performance varies strongly by class:
+[112] [List Paragraph] CRD is the strongest class (F1 = 0.81, precision 80.1%, recall 82.5%) and also the largest (137 images).
+[113] [List Paragraph] Fowl Pox has high recall (89.7%), so cases are rarely missed, but low precision (53.1%) because Bumblefoot (9), CRD (4) and Coryza (10) images are sometimes labelled Fowl Pox.
+[114] [List Paragraph] Infectious Coryza is confused with CRD: 26 of 90 Coryza images were predicted as CRD and 20 of 137 CRD images as Coryza. Both are respiratory conditions with overlapping appearance.
+[115] [List Paragraph] Bumblefoot is the weakest class: precision is 80.0% but recall only 34.8%, with just 8 of 23 images found; 9 were labelled Fowl Pox, 4 Coryza and 2 CRD. It has the fewest validation samples, and its recall interval (18.8–55.1%) is correspondingly wide.
+[116] [None] Because the intervals for Bumblefoot and Fowl Pox are wide, differences between the smaller classes should be read with caution.
+[117] [None] TABLE VII
+[118] [None] Doctor Per-Class Results (Validation, n = 279)
+[121] [None] Fig. 6. Doctor confusion matrix for the four diseases.
+[122] [Heading 2] D.  Confidence and Calibration
+[123] [None] Fig. 7 shows the distribution of the Doctor’s top-class confidence on the validation set. It is broad and roughly bell-shaped: about 70% of the 279 predictions lie between roughly 0.46 and 0.80, and only 16 exceed 0.93. The model therefore makes moderate-confidence decisions rather than extreme guesses. Calibration was not measured; modern networks are often miscalibrated [46], so these values should not be read as true probabilities.
+[125] [None] Fig. 7. Histogram and KDE of the Doctor’s prediction confidence.
+[126] [Heading 2] E.  Pipeline-Level Estimate
+[127] [None] The two models were evaluated separately, and the fused five-class pipeline was not evaluated end to end. As a rough guide only, if the Bouncer’s sick-bird recall (0.816) and the Doctor’s accuracy (0.717) are assumed independent, about 0.82 × 0.72 ≈ 59% of sick birds would be both detected and correctly named. This figure is an illustration, not a measurement: the two validation sets are different splits, and errors are unlikely to be independent. A direct end-to-end evaluation on a held-out test set is the priority for future work.
+[128] [Heading 2] F.  Qualitative End-to-End Behavior
+[129] [None] Two diseased-bird runs are shown. In Fig. 3 the pipeline reports Fowl Pox (43.0%) with Bumblefoot (7.4%) as a secondary risk, and the care plan combines the matching guideline entries. In Fig. 4(c), a foot photo is reported as Bumblefoot (77.4%) with Fowl Pox (10.2%) as a secondary risk, and the heatmap concentrates on the foot. An informal demonstration also used three scenarios: a healthy bird, a diseased bird, and a non-poultry photo that should trigger the Access Denied message. These runs illustrate behavior and are not a quantitative evaluation; in particular, the accuracy of the input gate was not measured.
+[130] [Heading 1] X.  Limitations and Responsible Use
+[131] [None] What the results support. The results show that lightweight frozen-backbone CNNs can provide a useful first screen and a plausible disease ranking for CRD and Fowl Pox. They do not show that the hierarchical design outperforms a flat five-class network: no flat baseline or ablation was trained, and that comparison is the most important missing experiment.
+[132] [None] Evaluation validity. Results come from one validation split that was also used to monitor training, with no separate test set and no cross-dataset test. Because only corrupt files were removed, near-duplicate images may appear in both splits [34]. If Healthy and diseased images come from different sources, the Bouncer may partly learn dataset artifacts instead of disease [26], [31]; field photographs may also differ from the training images in lighting, background and angle [32]. Bumblefoot and Fowl Pox have few validation images (23 and 29), so their metrics are noisy.
+[133] [None] Thresholds and open-set inputs. The 0.5 sickness threshold and the 5% secondary-risk threshold are hand-set, not calibrated. The Doctor always chooses one of four diseases, so a bird with any other illness is forced into one of them; confidence-based rejection [23], [47] was not implemented, and the Gemini gate filters only non-poultry images.
+[134] [None] Language-model dependence. The gate and the report need internet access and Gemini quota. The gate is itself a language-model decision whose accuracy was not measured, the grounding is prompt-level only [14], and neither the guideline table nor the generated reports have been reviewed by a veterinarian.
+[135] [None] Engineering. The API key travels with each request and is kept in browser storage, and CORS allows all origins; these are acceptable for a demonstration but should change in production. The Grad-CAM sub-models are rebuilt on every request and could be cached. Uploaded images are sent to a third-party API, so deployments handling farm data should review privacy terms.
+[136] [None] Scope and responsible use. Only four diseases are covered and one image is analyzed at a time. The output is a first opinion for decision support, not a veterinary diagnosis. Care plans that involve antibiotics are routed to a veterinarian, and users should confirm any serious or spreading condition with a qualified professional.
+[137] [Heading 1] XI.  Conclusion and Future Work
+[138] [None] PoultryHealth Intelligence shows that a hierarchical pair of lightweight CNNs, combined with Grad-CAM and a tightly constrained language model, can turn a single photograph into a diagnosis, a visual explanation and a care plan in a usable web application. The Bouncer is reliable when it flags a bird as sick (90.2% precision) and the Doctor identifies CRD well and rarely misses Fowl Pox (89.7% recall), but sick-bird recall (81.6%) and Bumblefoot recall (34.8%) leave clear room for improvement, and the evaluation is limited to a single validation split.
+[139] [None] Future work includes: (i) a flat five-class baseline and ablation of the hierarchy and fusion rule; (ii) a deduplicated held-out test set, end-to-end five-class metrics and cross-dataset evaluation; (iii) ROC and precision–recall analysis to tune the sickness threshold for sick-bird recall; (iv) fine-tuning the backbone [40] and class-balanced or focal-loss training [30], [48] with more Bumblefoot and Fowl Pox images; (v) calibration [46] and open-set rejection; (vi) lesion localization, stronger saliency methods such as Grad-CAM++ [49] and a quantitative heatmap evaluation; (vii) measuring the input gate and having a veterinarian review the guideline table and generated reports; (viii) moving the API key to a server-side secret, restricting CORS and caching the Grad-CAM sub-models; and (ix) TFLite export for offline edge deployment, a mobile application and a multi-language assistant.
+[140] [Heading 1] Acknowledgment
+[141] [None] The authors thank Dr. Dega Nagaraju, Vellore Institute of Technology, Vellore, for guidance and review of this project.
+[142] [Heading 1] References
+[143] [None] [1]	M. El-Gazzar, “Mycoplasma gallisepticum infection in poultry (chronic respiratory disease, infectious sinusitis),” MSD Veterinary Manual, updated Sep. 2025. [Online]. Available: https://www.msdvetmanual.com/poultry/mycoplasmosis/mycoplasma-gallisepticum-infection-in-poultry (accessed Oct. 21, 2026).
+[144] [None] [2]	E. Soriano-Vargas, “Infectious coryza,” MSD Veterinary Manual, updated Sep. 2024. [Online]. Available: https://www.msdvetmanual.com/poultry/infectious-coryza/infectious-coryza (accessed Oct. 21, 2026).
+[145] [None] [3]	D. N. Tripathy, “Fowlpox in chickens and turkeys,” MSD Veterinary Manual, updated Sep. 2024. [Online]. Available: https://www.msdvetmanual.com/poultry/fowlpox/fowlpox-in-chickens-and-turkeys (accessed Oct. 21, 2026).
+[146] [None] [4]	Y. Sato and M. El-Gazzar, “Staphylococcosis in poultry,” MSD Veterinary Manual, updated Jan. 2025. [Online]. Available: https://www.msdvetmanual.com/poultry/staphylococcosis/staphylococcosis-in-poultry (accessed Oct. 21, 2026).
+[147] [None] [5]	D. Machuve, E. Nwankwo, N. Mduma, and J. Mbelwa, “Poultry diseases diagnostics models using deep learning,” Front. Artif. Intell., vol. 5, Art. no. 733345, 2022, doi: 10.3389/frai.2022.733345.
+[148] [None] [6]	H. Mbelwa, “Deep convolutional neural network for chicken diseases,” Int. J. Adv. Comput. Sci. Appl. (IJACSA), vol. 12, no. 2, 2021.
+[149] [None] [7]	A. Dhungana, X. Yang, B. Paneru, et al., “An integrated deep learning approach for poultry disease detection using chicken manure images,” AgriEngineering, vol. 7, no. 9, p. 278, 2025.
+[150] [None] [8]	S. J. Pan and Q. Yang, “A survey on transfer learning,” IEEE Trans. Knowl. Data Eng., vol. 22, no. 10, pp. 1345–1359, Oct. 2010.
+[151] [None] [9]	J. Yosinski, J. Clune, Y. Bengio, and H. Lipson, “How transferable are features in deep neural networks?” in Adv. Neural Inf. Process. Syst. (NIPS), vol. 27, 2014, pp. 3320–3328.
+[152] [None] [10]	J. Deng, W. Dong, R. Socher, L.-J. Li, K. Li, and L. Fei-Fei, “ImageNet: A large-scale hierarchical image database,” in Proc. IEEE Conf. Comput. Vis. Pattern Recognit. (CVPR), 2009, pp. 248–255.
+[153] [None] [11]	C. N. Silla Jr. and A. A. Freitas, “A survey of hierarchical classification across different application domains,” Data Min. Knowl. Discov., vol. 22, no. 1–2, pp. 31–72, 2011, doi: 10.1007/s10618-010-0175-9.
+[154] [None] [12]	P. Viola and M. Jones, “Rapid object detection using a boosted cascade of simple features,” in Proc. IEEE Conf. Comput. Vis. Pattern Recognit. (CVPR), 2001, pp. I-511–I-518.
+[155] [None] [13]	C. Rudin, “Stop explaining black box machine learning models for high stakes decisions and use interpretable models instead,” Nat. Mach. Intell., vol. 1, no. 5, pp. 206–215, 2019.
+[156] [None] [14]	Z. Ji et al., “Survey of hallucination in natural language generation,” ACM Comput. Surv., vol. 55, no. 12, Art. no. 248, 2023, doi: 10.1145/3571730.
+[157] [None] [15]	“Enhancing poultry disease classification using fecal image,” ACM, 2025, doi: 10.1145/3723178.3723288.
+[158] [None] [16]	A. Taşdelen and Y. Arslan, “Detection of high-risk diseases in poultry feces through transfer learning,” Eng. Sci. Technol., Int. J., vol. 64, Art. no. 102002, 2025, doi: 10.1016/j.jestch.2025.102002.
+[159] [None] [17]	Y. Luo, “Feature-based transfer learning pipeline for poultry disease classification,” 2025. [Online]. Available: https://www.sciencedirect.com/science/article/pii/S2772375525000899
+[160] [None] [18]	A. S. R. Sabbella, “YOLOv8-based deep learning model for automated poultry disease identification,” arXiv:2508.04658, 2025. [Online]. Available: https://arxiv.org/abs/2508.04658
+[161] [None] [19]	R. Zaman et al., “Data-efficient framework for real-time avian pox identification in broiler chickens,” 2025.
+[162] [None] [20]	V. Shwetha, B. S. Maddodi, V. Laxmi, A. Kumar, and S. Shrivastava, “Latest trend and challenges in machine learning– and deep learning–based computational techniques in poultry health and disease management: A review,” J. Comput. Netw. Commun., vol. 2024, Art. no. 8674250, 2024, doi: 10.1155/2024/8674250.
+[163] [None] [21]	M. Sandler, A. Howard, M. Zhu, A. Zhmoginov, and L.-C. Chen, “MobileNetV2: Inverted residuals and linear bottlenecks,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR), 2018, pp. 4510–4520.
+[164] [None] [22]	Z. Yan, H. Zhang, R. Piramuthu, V. Jagadeesh, D. DeCoste, W. Di, and Y. Yu, “HD-CNN: Hierarchical deep convolutional neural networks for large scale visual recognition,” in Proc. IEEE Int. Conf. Comput. Vis. (ICCV), 2015, pp. 2740–2748.
+[165] [None] [23]	Y. Geifman and R. El-Yaniv, “Selective classification for deep neural networks,” in Adv. Neural Inf. Process. Syst. (NIPS), vol. 30, 2017, pp. 4878–4887.
+[166] [None] [24]	R. R. Selvaraju, M. Cogswell, A. Das, R. Vedantam, D. Parikh, and D. Batra, “Grad-CAM: Visual explanations from deep networks via gradient-based localization,” in Proc. IEEE Int. Conf. Comput. Vis. (ICCV), 2017, pp. 618–626.
+[167] [None] [25]	J. Adebayo, J. Gilmer, M. Muelly, I. Goodfellow, M. Hardt, and B. Kim, “Sanity checks for saliency maps,” in Adv. Neural Inf. Process. Syst. (NeurIPS), vol. 31, 2018, pp. 9505–9515.
+[168] [None] [26]	R. Geirhos et al., “Shortcut learning in deep neural networks,” Nat. Mach. Intell., vol. 2, pp. 665–673, 2020.
+[169] [None] [27]	P. Lewis et al., “Retrieval-augmented generation for knowledge-intensive NLP tasks,” in Adv. Neural Inf. Process. Syst. (NeurIPS), vol. 33, 2020, pp. 9459–9474.
+[170] [None] [28]	Google, “Gemini API documentation.” [Online]. Available: https://ai.google.dev/gemini-api/docs
+[171] [None] [29]	G. Comanici et al., “Gemini 2.5: Pushing the frontier with advanced reasoning, multimodality, long context, and next generation agentic capabilities,” arXiv:2507.06261, 2025.
+[172] [None] [30]	J. M. Johnson and T. M. Khoshgoftaar, “Survey on deep learning with class imbalance,” J. Big Data, vol. 6, Art. no. 27, 2019.
+[173] [None] [31]	A. Torralba and A. A. Efros, “Unbiased look at dataset bias,” in Proc. IEEE Conf. Comput. Vis. Pattern Recognit. (CVPR), 2011, pp. 1521–1528.
+[174] [None] [32]	Y. Ovadia et al., “Can you trust your model’s uncertainty? Evaluating predictive uncertainty under dataset shift,” in Adv. Neural Inf. Process. Syst. (NeurIPS), vol. 32, 2019, pp. 13991–14002.
+[175] [None] [33]	C. Elkan, “The foundations of cost-sensitive learning,” in Proc. 17th Int. Joint Conf. Artif. Intell. (IJCAI), 2001, pp. 973–978.
+[176] [None] [34]	S. Kapoor and A. Narayanan, “Leakage and the reproducibility crisis in machine-learning-based science,” Patterns, vol. 4, no. 9, Art. no. 100804, 2023.
+[177] [None] [35]	C. Shorten and T. M. Khoshgoftaar, “A survey on image data augmentation for deep learning,” J. Big Data, vol. 6, Art. no. 60, 2019, doi: 10.1186/s40537-019-0197-0.
+[178] [None] [36]	M. Abadi et al., “TensorFlow: Large-scale machine learning on heterogeneous systems,” 2015. [Online]. Available: https://www.tensorflow.org
+[179] [None] [37]	F. Chollet et al., “Keras,” 2015. [Online]. Available: https://keras.io
+[180] [None] [38]	N. Srivastava, G. Hinton, A. Krizhevsky, I. Sutskever, and R. Salakhutdinov, “Dropout: A simple way to prevent neural networks from overfitting,” J. Mach. Learn. Res., vol. 15, no. 56, pp. 1929–1958, 2014.
+[181] [None] [39]	D. P. Kingma and J. Ba, “Adam: A method for stochastic optimization,” in Proc. Int. Conf. Learn. Represent. (ICLR), 2015.
+[182] [None] [40]	S. Kornblith, J. Shlens, and Q. V. Le, “Do better ImageNet models transfer better?” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR), 2019, pp. 2661–2671.
+[183] [None] [41]	S. Ramírez, “FastAPI.” [Online]. Available: https://fastapi.tiangolo.com
+[184] [None] [42]	L. D. Brown, T. T. Cai, and A. DasGupta, “Interval estimation for a binomial proportion,” Statist. Sci., vol. 16, no. 2, pp. 101–133, 2001.
+[185] [None] [43]	J. Cohen, “A coefficient of agreement for nominal scales,” Educ. Psychol. Meas., vol. 20, no. 1, pp. 37–46, 1960.
+[186] [None] [44]	B. W. Matthews, “Comparison of the predicted and observed secondary structure of T4 phage lysozyme,” Biochim. Biophys. Acta, vol. 405, no. 2, pp. 442–451, 1975.
+[187] [None] [45]	T. Saito and M. Rehmsmeier, “The precision-recall plot is more informative than the ROC plot when evaluating binary classifiers on imbalanced datasets,” PLoS ONE, vol. 10, no. 3, Art. no. e0118432, 2015.
+[188] [None] [46]	C. Guo, G. Pleiss, Y. Sun, and K. Q. Weinberger, “On calibration of modern neural networks,” in Proc. 34th Int. Conf. Mach. Learn. (ICML), PMLR vol. 70, 2017, pp. 1321–1330.
+[189] [None] [47]	D. Hendrycks and K. Gimpel, “A baseline for detecting misclassified and out-of-distribution examples in neural networks,” in Proc. Int. Conf. Learn. Represent. (ICLR), 2017.
+[190] [None] [48]	T.-Y. Lin, P. Goyal, R. Girshick, K. He, and P. Dollár, “Focal loss for dense object detection,” in Proc. IEEE Int. Conf. Comput. Vis. (ICCV), 2017, pp. 2980–2988, doi: 10.1109/ICCV.2017.324.
+[191] [None] [49]	A. Chattopadhay, A. Sarkar, P. Howlader, and V. N. Balasubramanian, “Grad-CAM++: Generalized gradient-based visual explanations for deep convolutional networks,” in Proc. IEEE Winter Conf. Appl. Comput. Vis. (WACV), 2018, pp. 839–847.
+
+
+TABLES (8):
+
+--- TABLE 1 (1 rows, 3 cols) ---
+Row 0: Ayush M Singh Reg. No. 23BDS0033 Vellore Institute of Technology Vellore, India | Venkata Sriram Topalli Reg. No. 23BE0441 Vellore Institute of Technology Vellore, India | Dega Nagaraju Professor Grade 2 Vellore Institute of Technology Vellore, India
+
+--- TABLE 2 (10 rows, 4 cols) ---
+Row 0: Work | Input | Approach | Targets
+Row 1: [5] | Fecal images | CNN; VGG16, InceptionV3, MobileNetV2, Xception | Coccidiosis, salmonella, Newcastle
+Row 2: [6] | Fecal images | Convolutional network | e.g., coccidiosis, salmonella
+Row 3: [7] | Manure images | Integrated deep learning | Poultry diseases
+Row 4: [15] | Fecal images | CNN and transfer-learning backbones compared | Poultry diseases
+Row 5: [16] | Fecal images | Transfer learning | High-risk diseases
+Row 6: [17] | Images | ResNet152 features + SVM | Poultry diseases
+Row 7: [18] | Images | YOLOv8 detection | Poultry diseases
+Row 8: [19] | Images | Data-efficient two-stage framework | Avian pox
+Row 9: This work | Bird, foot, comb, organ photos | Hierarchical MobileNetV2 + Grad-CAM + grounded LLM report | Bumblefoot, CRD, Fowl Pox, Coryza
+
+--- TABLE 3 (3 rows, 5 cols) ---
+Row 0: Model | Classes | Images | Train | Valid.
+Row 1: Bouncer | 2 | 2,147 | 1,718 | 429
+Row 2: Doctor | 4 | 1,396 | 1,117 | 279
+
+--- TABLE 4 (9 rows, 3 cols) ---
+Row 0: Property | Bouncer (model A) | Doctor (model B)
+Row 1: Task | Healthy or sick | Which disease
+Row 2: Output | 1 unit, sigmoid | 4 units, softmax
+Row 3: Backbone | MobileNetV2, frozen | MobileNetV2, frozen
+Row 4: Head | Pooling, dropout 0.2 | Pooling, dropout 0.2
+Row 5: Loss | Binary cross-entropy | Sparse categorical CE
+Row 6: Optimizer | Adam, lr = 0.001 | Adam, lr = 0.001
+Row 7: Batch size | 32 | 32
+Row 8: Max. epochs | 25 (ran 23) | 30 (ran 14)
+
+--- TABLE 5 (6 rows, 3 cols) ---
+Row 0: Class | Nature | Key guidance
+Row 1: Healthy | Clear | No intervention; keep biosecurity, dry bedding, clean water
+Row 2: Bumblefoot | Bacterial (Staphylococcus) | Soft-bedded isolation; Epsom salt soak; antimicrobial spray; bandage; lower roosts
+Row 3: CRD | Mycoplasma; highly contagious | Isolate; consult a vet for antibiotics; improve ventilation; electrolytes
+Row 4: Fowl Pox | Viral; slow spreading | Isolate; no cure; iodine on scabs; warm, stress-free care
+Row 5: Infectious Coryza | Bacterial; highly contagious | Strict isolation; vet-prescribed antibiotics; recovered birds stay carriers
+
+--- TABLE 6 (5 rows, 2 cols) ---
+Row 0: Item | Description
+Row 1: POST /analyze | Form fields: image (file), gemini_api_key (text)
+Row 2: GET / | Health check
+Row 3: Success | status, primary_diagnosis, confidence (%), distribution (5 classes), report, original and heatmap images (Base64 JPEG)
+Row 4: Errors | 400 invalid image or missing key; 429 rate limit; 502 upstream Gemini error; status “error” with a message for non-poultry photos
+
+--- TABLE 7 (4 rows, 6 cols) ---
+Row 0: Class | Support | Precision | Recall | F1 | Recall 95% CI
+Row 1: Healthy | 146 | 69.9% | 82.9% | 0.76 | 75.9–88.1%
+Row 2: Sick | 283 | 90.2% | 81.6% | 0.86 | 76.7–85.7%
+Row 3: Macro average | 429 | 80.1% | 82.3% | 0.81 | —
+
+--- TABLE 8 (6 rows, 6 cols) ---
+Row 0: Disease | Support | Precision | Recall | F1 | Recall 95% CI
+Row 1: Bumblefoot | 23 | 80.0% | 34.8% | 0.49 | 18.8–55.1%
+Row 2: CRD | 137 | 80.1% | 82.5% | 0.81 | 75.3–87.9%
+Row 3: Fowl Pox | 29 | 53.1% | 89.7% | 0.67 | 73.6–96.4%
+Row 4: Infectious Coryza | 90 | 67.1% | 58.9% | 0.63 | 48.6–68.5%
+Row 5: Macro average | 279 | 70.1% | 66.5% | 0.65 | —
+

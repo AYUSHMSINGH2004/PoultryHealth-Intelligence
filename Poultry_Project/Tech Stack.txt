@@ -1,0 +1,37 @@
+A. AI/ML Stack
+
+1. TensorFlow 2.19 / Keras: Loads and runs AI models and calculates Grad-CAM gradients.
+2. MobileNetV2 (Frozen): Extracts image features efficiently and works well with limited training data.
+3. Two-Stage Architecture (Bouncer + Doctor): First detects whether poultry is healthy or sick, then identifies the disease.
+4. Sigmoid / Softmax: Sigmoid handles binary classification, while Softmax predicts probabilities for four disease classes.
+5. Data Augmentation: Uses random flips, rotations, and zooming to reduce overfitting.
+6. GAP + Dropout (0.2): Reduces model parameters and helps prevent overfitting.
+7. Probability Fusion: Combines both models' predictions into five classes: healthy and four diseases.
+8. Grad-CAM ("out_relu"): Highlights image regions influencing the model's predictions.
+9. Gemini (Image Gate): Checks whether the uploaded image contains poultry before classification.
+10. Gemini (Report Writer): Generates readable reports and care suggestions based on prediction results.
+11. NumPy: Performs numerical calculations and array operations.
+12. Pillow: Handles image loading, decoding, and resizing.
+13. Matplotlib: Provides the Jet colormap used to generate Grad-CAM heatmaps.
+
+B. Backend Stack
+
+1. Python 3.12: Runs the backend application and AI models.
+2. FastAPI: Connects the frontend with AI models through API endpoints.
+3. Uvicorn: Runs the FastAPI server and handles incoming requests.
+4. python-multipart: Handles image uploads and form data.
+5. REST API + Base64 JPEG: Transfers predictions and generated images to the frontend in a single response.
+6. CORS (*): Allows the frontend to communicate with the backend.
+7. Models Loaded at Startup: Loads the AI models once when the server starts, avoiding repeated loading for every request.
+
+C. Frontend Stack
+
+1. React.js: Builds the interactive user interface using reusable components.
+2. Vite: Provides a fast development server and builds the frontend for deployment.
+3. JavaScript: Handles application logic and user interactions.
+4. HTML5: Defines the structure of the web application.
+5. CSS3: Styles the interface, including layouts, colors, and responsive design.
+6. Fetch API: Sends image-analysis requests to the backend and receives predictions.
+7. Base64 Image Rendering: Displays generated Grad-CAM heatmaps received from the backend.
+8. Netlify: Hosts the frontend and makes the application accessible online.
+9. Responsive Design: Ensures the application works across desktops, tablets, and mobile devices.
