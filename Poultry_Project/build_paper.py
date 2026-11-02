@@ -296,7 +296,7 @@ def build_paper():
 
     authors_info = [
         ("Ayush M Singh", "Reg. No. 23BDS0033\nSchool of Computer Science and Engineering\nVellore Institute of Technology\nVellore, India\nayush.msingh2023@vitstudent.ac.in"),
-        ("Venkata Sriram Topalli", "Reg. No. 23BE0441\nSchool of Electrical Engineering\nVellore Institute of Technology\nVellore, India\nvenkatasriram.topalli2023@vitstudent.ac.in"),
+        ("Venkata Sriram Topalli", "Reg. No. 23BCE0441\nSchool of Electrical Engineering\nVellore Institute of Technology\nVellore, India\nvenkata.sriram2023@vitstudent.ac.in"),
         ("Dr. Dega Nagaraju", "Professor Grade 2\nDepartment of Computing Technologies, SCOPE\nVellore Institute of Technology\nVellore, India\ndeganagaraju@vit.ac.in")
     ]
 
